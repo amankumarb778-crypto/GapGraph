@@ -115,6 +115,11 @@ export default function UploadPage() {
       if (!res.ok) {
         throw new Error(data.message ? `Analysis Engine: ${data.message}` : (data.error || "Analysis failed"));
       }
+      
+      console.log("%c🤖 AI Analysis Complete", "color: #7B2FFF; font-size: 16px; font-weight: bold;");
+      console.log("%c📄 Resume Skills Extracted:", "color: #00FFB2; font-weight: bold;", data.extractedSkills?.resume);
+      console.log("%c🎯 JD Skills Extracted:", "color: #00FFB2; font-weight: bold;", data.extractedSkills?.jd);
+      console.log("Full Report:", data);
 
       setAnalysisResult(data);
       router.push("/dashboard");
