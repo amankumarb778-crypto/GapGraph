@@ -13,8 +13,12 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { overallProgress, isLoggedIn, profileImage } = useApp();
+  const { overallProgress, isLoggedIn, profileImage, user } = useApp();
   const readiness = 74 + Math.round(overallProgress * 0.26);
+
+  const avatarInitials = user?.name 
+    ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2) 
+    : "ME";
 
   return (
     <>
@@ -66,7 +70,7 @@ export default function Navbar() {
                 {profileImage ? (
                   <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
-                  "AM"
+                  avatarInitials
                 )}
               </Link>
             </>

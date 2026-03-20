@@ -3,23 +3,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/context";
-import { user, roleOptions } from "@/lib/data";
+import { user as mockUser, roleOptions } from "@/lib/data";
 import { motion } from "framer-motion";
 import { useRef } from "react";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { isLoggedIn, logout, selectedRole, setSelectedRole, profileImage, setProfileImage } = useApp();
+  const { isLoggedIn, logout, selectedRole, setSelectedRole, profileImage, setProfileImage, user: contextUser } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    name: user.name,
-    company: user.company,
-    role: selectedRole,
-    experience: user.experience,
-    email: "arjun@techcorp.in", 
-    phone: "+91 98765 43210"
+    name: contextUser?.name || mockUser.name,
+    company: "GapGraph User",
+    role: contextUser?.role || selectedRole,
+    experience: mockUser.experience,
+    email: contextUser?.email || "hello@gapgraph.io", 
+    phone: "Not provided"
   });
 
   // Redirect if not logged in
@@ -80,7 +80,7 @@ export default function ProfilePage() {
               {profileImage ? (
                 <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                formData.name.split(" ").map(n => n[0]).join("")
+                formData.name.split(" ").map((n: string) => n[0]).join("")
               )}
               {isEditing && (
                 <div className="absolute inset-0 bg-black/60 flex flex-col justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity">
