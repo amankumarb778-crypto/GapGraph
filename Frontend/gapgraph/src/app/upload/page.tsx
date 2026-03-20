@@ -71,7 +71,8 @@ export default function UploadPage() {
       if (uploadedFiles.resume) formData.append("resume", uploadedFiles.resume);
       if (jdText) formData.append("jdText", jdText);
 
-      const res = await fetch("http://localhost:3001/api/analyze", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+      const res = await fetch(`${API_URL}/api/analyze`, {
         method: "POST",
         body: formData,
       });
