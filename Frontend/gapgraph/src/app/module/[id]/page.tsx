@@ -62,11 +62,13 @@ export default function ModuleDetailPage() {
   };
 
   const handleMarkComplete = () => {
+    toggleModule(mod.id);
     if (!isDone) {
-      toggleModule(mod.id);
       showToast(`"${mod.title}" marked as complete!`);
+      setTimeout(() => router.push("/roadmap"), 300);
+    } else {
+      showToast(`"${mod.title}" marked as incomplete.`);
     }
-    setTimeout(() => router.push("/roadmap"), 300);
   };
 
   return (

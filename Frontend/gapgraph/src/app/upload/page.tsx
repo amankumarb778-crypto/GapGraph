@@ -16,18 +16,32 @@ const loaderSteps = [
 
 export default function UploadPage() {
   const router = useRouter();
-  const { selectedRole, setSelectedRole, uploadedFiles, setUploadedFiles } = useApp();
+  const { selectedRole, setSelectedRole, uploadedFiles, setUploadedFiles, isLoggedIn, recentComparisons, addComparison, selfAssessmentScores, setSelfAssessmentScores } = useApp();
   const [resumeName, setResumeName] = useState<string | null>(null);
   const [jdName, setJdName] = useState<string | null>(null);
   const [jdText, setJdText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loaderStep, setLoaderStep] = useState(0);
+  const [selectedCompany, setSelectedCompany] = useState<string>("Google L5");
   const resumeRef = useRef<HTMLInputElement>(null);
   const jdRef = useRef<HTMLInputElement>(null);
+
+  const enforceAuth = (e?: React.SyntheticEvent) => {
+    if (!isLoggedIn) {
+      if (e) e.preventDefault();
+      router.push("/login");
+      return false;
+    }
+    return true;
+  };
 
   const handleFileDrop = useCallback(
     (type: "resume" | "jd") => (e: React.DragEvent) => {
       e.preventDefault();
+      if (!isLoggedIn) {
+        router.push("/login");
+        return;
+      }
       const file = e.dataTransfer.files[0];
       if (file) {
         if (type === "resume") {
@@ -39,7 +53,7 @@ export default function UploadPage() {
         }
       }
     },
-    [uploadedFiles, setUploadedFiles]
+    [uploadedFiles, setUploadedFiles, isLoggedIn, router]
   );
 
   const handleFileSelect = useCallback(
@@ -58,39 +72,28 @@ export default function UploadPage() {
     [uploadedFiles, setUploadedFiles]
   );
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     setIsLoading(true);
     setLoaderStep(0);
+    
+    // Dynamically insert a new recent comparison for this session
+    addComparison({
+      name: `${selectedCompany} • ${selectedRole}`,
+      match: `${Math.floor(Math.random() * 40) + 50}%`,
+      time: "Just now",
+      color: "text-success",
+    });
 
+    let step = 0;
     const interval = setInterval(() => {
-      setLoaderStep((prev) => (prev < loaderSteps.length - 1 ? prev + 1 : prev));
-    }, 1500);
-
-    try {
-      const formData = new FormData();
-      if (uploadedFiles.resume) formData.append("resume", uploadedFiles.resume);
-      if (jdText) formData.append("jdText", jdText);
-
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-      const res = await fetch(`${API_URL}/api/analyze`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("Analysis failed");
-      
-      const result = await res.json();
-      console.log("Analysis Result:", result);
-
-      clearInterval(interval);
-      setLoaderStep(loaderSteps.length);
-      setTimeout(() => router.push("/dashboard"), 500);
-    } catch (error) {
-      console.error(error);
-      clearInterval(interval);
-      setIsLoading(false);
-      alert("Failed to analyze profile.");
-    }
+      step++;
+      if (step >= loaderSteps.length) {
+        clearInterval(interval);
+        setTimeout(() => router.push("/dashboard"), 500);
+      } else {
+        setLoaderStep(step);
+      }
+    }, 700);
   };
 
   return (
@@ -162,7 +165,9 @@ export default function UploadPage() {
                 className="group relative flex flex-col items-center justify-center h-64 bg-[#111827] border-2 border-dashed border-primary-container/40 rounded-xl hover:border-secondary transition-all cursor-pointer overflow-hidden"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleFileDrop("resume")}
-                onClick={() => resumeRef.current?.click()}
+                onClick={(e) => {
+                  if (enforceAuth(e)) resumeRef.current?.click();
+                }}
               >
                 <div className="absolute inset-0 faint-grid opacity-10" />
                 <input
@@ -194,7 +199,9 @@ export default function UploadPage() {
                 className="group relative flex flex-col items-center justify-center h-64 bg-[#111827] border-2 border-dashed border-primary-container/40 rounded-xl hover:border-secondary transition-all cursor-pointer overflow-hidden"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleFileDrop("jd")}
-                onClick={() => jdRef.current?.click()}
+                onClick={(e) => {
+                  if (enforceAuth(e)) jdRef.current?.click();
+                }}
               >
                 <div className="absolute inset-0 faint-grid opacity-10" />
                 <input
@@ -227,7 +234,7 @@ export default function UploadPage() {
               <label className="text-on-surface-variant text-sm font-medium">Or paste job description below:</label>
               <textarea
                 value={jdText}
-                onChange={(e) => setJdText(e.target.value)}
+                onChange={(e) => { if (enforceAuth(e)) setJdText(e.target.value); }}
                 placeholder="Paste the job description text here..."
                 className="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 focus:ring-0 focus:border-primary-container text-on-surface py-4 px-4 rounded-t-xl transition-all h-32 resize-none placeholder:text-on-surface-variant/40"
               />
@@ -242,7 +249,7 @@ export default function UploadPage() {
                 {roleOptions.map((role) => (
                   <button
                     key={role}
-                    onClick={() => setSelectedRole(role)}
+                    onClick={(e) => { if (enforceAuth(e)) setSelectedRole(role); }}
                     className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                       selectedRole === role
                         ? "bg-primary-container text-on-primary-container shadow-lg shadow-primary-container/30"
@@ -256,30 +263,33 @@ export default function UploadPage() {
             </div>
 
             {/* Self-Assessment Sliders */}
-            <div className="bg-surface-container-low p-8 rounded-xl space-y-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-5">
+            <div className="bg-[#111118] p-8 rounded-xl space-y-8 relative overflow-hidden border border-white/5">
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                 <span className="material-symbols-outlined text-9xl">analytics</span>
               </div>
-              <h3 className="text-violet-400 font-bold text-xl mb-6">Self-Assessment Baseline</h3>
-              <div className="space-y-8">
-                {["Systems Design", "Algorithmic Efficiency", "Cloud Architecture", "Concurrency Control", "Data Modeling"].map(
-                  (skill) => (
-                    <SliderItem key={skill} label={skill} />
-                  )
-                )}
+              <h3 className="text-[#7B2FFF] font-bold text-xl mb-6 relative z-10">Self-Assessment Baseline</h3>
+              <div className="space-y-8 relative z-10">
+                {Object.entries(selfAssessmentScores).map(([skill, val]) => (
+                  <SliderItem 
+                    key={skill} 
+                    label={skill} 
+                    value={val} 
+                    onChange={(newVal) => { if (enforceAuth()) setSelfAssessmentScores(prev => ({...prev, [skill]: newVal})); }} 
+                  />
+                ))}
               </div>
             </div>
 
             {/* CTA */}
             <div className="flex items-center justify-between pt-6">
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={(e) => { if (enforceAuth(e)) router.push("/dashboard"); }}
                 className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors font-semibold text-sm"
               >
                 View demo results →
               </button>
               <button
-                onClick={handleAnalyze}
+                onClick={(e) => { if (enforceAuth(e)) handleAnalyze(); }}
                 className="pulse-gradient px-12 py-5 rounded-xl text-on-primary-container font-extrabold text-xl shadow-[0_0_30px_rgba(124,58,237,0.3)] hover:shadow-[0_0_40px_rgba(34,211,238,0.4)] hover:scale-[1.02] transition-all flex items-center gap-3"
               >
                 Analyze Profile
@@ -295,18 +305,19 @@ export default function UploadPage() {
           <div className="bg-surface-container p-6 rounded-xl relative overflow-hidden">
             <div className="absolute inset-0 faint-grid opacity-5" />
             <h4 className="text-violet-400 font-bold text-sm uppercase tracking-widest mb-6">
-              Recent Comparisons
+              Benchmark Target
             </h4>
             <div className="space-y-4">
-              {[
-                { name: "Google L5", match: "72%", time: "2 days ago", color: "text-secondary" },
-                { name: "Meta Senior E4", match: "64%", time: "5 days ago", color: "text-secondary" },
-                { name: "Amazon SDE III", match: "58%", time: "1 week ago", color: "text-on-surface" },
-              ].map((item, i) => (
+              {recentComparisons.map((item, i) => {
+                const isSelected = selectedCompany === item.name || (i === 0 && selectedCompany === "Google L5");
+                return (
                 <div
-                  key={item.name}
-                  className={`bg-surface-container-low p-4 rounded-lg flex items-center justify-between hover:bg-surface-container-high transition-all group ${
-                    i === 2 ? "opacity-60" : ""
+                  key={i + item.name}
+                  onClick={(e) => { if (enforceAuth(e)) setSelectedCompany(item.name); }}
+                  className={`p-4 rounded-xl flex items-center justify-between hover:bg-surface-container-high transition-all cursor-pointer border-2 ${
+                    isSelected 
+                      ? "border-primary bg-primary-container/10 shadow-[0_0_20px_rgba(124,58,237,0.15)] opacity-100" 
+                      : "border-outline-variant/5 bg-surface-container-low opacity-60 hover:opacity-100"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -323,9 +334,10 @@ export default function UploadPage() {
                     <p className="text-[10px] text-on-surface-variant uppercase">Match</p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
-            <button className="w-full mt-8 py-3 rounded-lg border border-outline-variant/30 text-on-surface-variant text-sm font-semibold hover:bg-surface-container-highest transition-all flex items-center justify-center gap-2">
+            <button onClick={(e) => enforceAuth(e)} className="w-full mt-8 py-3 rounded-lg border border-outline-variant/30 text-on-surface-variant text-sm font-semibold hover:bg-surface-container-highest transition-all flex items-center justify-center gap-2">
               View Full History
               <span className="material-symbols-outlined text-sm">history</span>
             </button>
@@ -345,25 +357,23 @@ export default function UploadPage() {
   );
 }
 
-function SliderItem({ label }: { label: string }) {
-  const [value, setValue] = useState(50);
-  const levels = ["Beginner", "Basic", "Intermediate", "Advanced", "Expert"];
-  const levelIndex = Math.min(Math.floor(value / 20), 4);
+function SliderItem({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) {
+  const levelText = value <= 25 ? "Beginner" : value <= 50 ? "Basic" : value <= 75 ? "Intermediate" : "Expert";
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <span className="text-on-surface font-medium">{label}</span>
-        <span className="text-secondary font-bold text-sm">{levels[levelIndex]}</span>
+        <span className="text-white/90 font-medium text-sm">{label}</span>
+        <span className="font-bold text-sm text-[#00FFB2]">{levelText}</span>
       </div>
       <input
         type="range"
         min="0"
         max="100"
         value={value}
-        onChange={(e) => setValue(+e.target.value)}
-        className="w-full h-1.5 bg-surface-variant rounded-lg appearance-none cursor-pointer custom-slider"
-        style={{ background: `linear-gradient(to right, #7c3aed ${value}%, #2f3445 ${value}%)` }}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-2 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#00FFB2] [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,255,178,0.5)] focus:outline-none"
+        style={{ background: `linear-gradient(to right, #7B2FFF ${value}%, rgba(255,255,255,0.1) ${value}%)` }}
       />
     </div>
   );

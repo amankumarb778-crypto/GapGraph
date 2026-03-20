@@ -15,13 +15,13 @@ export default function SignupPage() {
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate 2s network delay
+    // Simulate 0.5s network delay
     setTimeout(() => {
       setSelectedRole(formData.role);
       login();
       setIsLoading(false);
       router.push("/upload"); // Route to upload for new users
-    }, 2000);
+    }, 500);
   };
 
   return (

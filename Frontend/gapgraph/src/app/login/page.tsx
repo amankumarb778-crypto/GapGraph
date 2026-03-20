@@ -15,12 +15,12 @@ export default function LoginPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate 2s network delay
+    // Simulate 0.5s network delay
     setTimeout(() => {
       login();
       setIsLoading(false);
-      router.push("/dashboard");
-    }, 2000);
+      router.push("/upload");
+    }, 500);
   };
 
   return (
@@ -91,7 +91,7 @@ export default function LoginPage() {
 
         <div className="mt-8 text-center relative z-10">
           <p className="text-xs text-on-surface-variant">
-            Don&apos;t have an account?{" "}
+            Don't have an account?{" "}
             <button onClick={() => router.push("/signup")} className="text-secondary font-bold hover:underline">
               Sign Up
             </button>
