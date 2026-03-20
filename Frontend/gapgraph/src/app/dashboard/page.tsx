@@ -36,7 +36,7 @@ export default function DashboardPage() {
   const [animatedScore, setAnimatedScore] = useState(0);
 
   useEffect(() => {
-    setTimeout(() => setMounted(true), 0);
+    setMounted(true);
     let frame = 0;
     const target = user.readinessScore;
     const interval = setInterval(() => {
