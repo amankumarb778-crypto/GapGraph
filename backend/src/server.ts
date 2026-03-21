@@ -7,6 +7,7 @@ import { DiagnoserService } from "./services/diagnoser.service";
 import { PlannerService } from "./services/planner.service";
 import { CriticService } from "./services/critic.service";
 import { ReasoningTracer } from "./utils/reasoning-tracer";
+import { YouTubeService } from "./services/youtube.service";
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ const prisma = new PrismaClient();
 const diagnoser = new DiagnoserService();
 const planner = new PlannerService();
 const critic = new CriticService();
+const youtube = new YouTubeService();
 
 // --- Global SSE connections ---
 const sseClients = new Map<string, (data: string) => void>();
@@ -246,8 +248,19 @@ async function main() {
 
             tracer.addStep(
                 "All phases complete. Analysis pipeline finished successfully.",
-                "Returning results"
+                "Fetching YouTube resources for path nodes"
             );
+
+            // Enhance nodes with YouTube resources
+            const enhancedNodes = await Promise.all(criticResult.validatedPath.nodes.map(async (node) => {
+                const mainSkill = node.skillsCovered[0] || node.title;
+                const resources = await youtube.getResourcesForSkill(mainSkill);
+                
+                return {
+                    ...node,
+                    resources
+                };
+            }));
 
             // Build final response
             const result = {
@@ -258,7 +271,10 @@ async function main() {
                     jd: jdSkills,
                 },
                 skillGaps,
-                learningPath: criticResult.validatedPath,
+                learningPath: {
+                    ...criticResult.validatedPath,
+                    nodes: enhancedNodes
+                },
                 validationReport: criticResult.validationReport,
                 reasoningTrace: tracer.getSteps(),
             };

@@ -2,13 +2,6 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
 
-export interface Comparison {
-  name: string;
-  match: string;
-  time: string;
-  color: string;
-}
-
 interface AppContextType {
   completedModules: Set<number>;
   toggleModule: (id: number) => void;
@@ -18,17 +11,10 @@ interface AppContextType {
   uploadedFiles: { resume: File | null; jd: File | null };
   setUploadedFiles: (files: { resume: File | null; jd: File | null }) => void;
   isLoggedIn: boolean;
-  user: any | null;
-  login: (userArgs?: any) => void;
+  login: () => void;
   logout: () => void;
-  analysisResult: any | null;
-  setAnalysisResult: (data: any | null) => void;
-  profileImage: string | null;
-  setProfileImage: (url: string | null) => void;
-  recentComparisons: Comparison[];
-  addComparison: (comp: Comparison) => void;
-  selfAssessmentScores: Record<string, number>;
-  setSelfAssessmentScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  analysisResult: any;
+  setAnalysisResult: (result: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -38,25 +24,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedRole, setSelectedRole] = useState("Software Engineer");
   const [uploadedFiles, setUploadedFiles] = useState<{ resume: File | null; jd: File | null }>({ resume: null, jd: null });
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<any | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [recentComparisons, setRecentComparisons] = useState<Comparison[]>([
-    { name: "Google L5", match: "72%", time: "2 days ago", color: "text-secondary" },
-    { name: "Meta Senior E4", match: "64%", time: "5 days ago", color: "text-secondary" },
-    { name: "Amazon SDE III", match: "58%", time: "1 week ago", color: "text-on-surface" },
-  ]);
-  const [selfAssessmentScores, setSelfAssessmentScores] = useState<Record<string, number>>({
-    "Systems Design": 50,
-    "Algorithmic Efficiency": 50,
-    "Cloud Architecture": 50,
-    "Concurrency Control": 50,
-    "API Design": 50,
-    "Database Optimization": 50,
-  });
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
-  const totalModules = 7;
-  const overallProgress = Math.round((completedModules.size / totalModules) * 100);
+  const totalModules = analysisResult?.learningPath?.nodes?.length || 7;
+  const overallProgress = Math.round((completedModules.size / Math.max(1, totalModules)) * 100);
 
   const toggleModule = useCallback((id: number) => {
     setCompletedModules((prev) => {
@@ -70,20 +41,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const addComparison = useCallback((comp: Comparison) => {
-    setRecentComparisons((prev) => [comp, ...prev].slice(0, 5));
-  }, []);
-
-  const login = (userData?: any) => {
-    setIsLoggedIn(true);
-    if (userData) setUser(userData);
-  };
+  const login = () => setIsLoggedIn(true);
   const logout = () => {
     setIsLoggedIn(false);
-    setUser(null);
-    setAnalysisResult(null);
     setCompletedModules(new Set());
-    setProfileImage(null);
+    setAnalysisResult(null);
   };
 
   return (
@@ -97,17 +59,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         uploadedFiles,
         setUploadedFiles,
         isLoggedIn,
-        user,
         login,
         logout,
         analysisResult,
         setAnalysisResult,
-        profileImage,
-        setProfileImage,
-        recentComparisons,
-        addComparison,
-        selfAssessmentScores,
-        setSelfAssessmentScores,
       }}
     >
       {children}

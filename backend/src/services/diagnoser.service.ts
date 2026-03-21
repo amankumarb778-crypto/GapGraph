@@ -1,5 +1,6 @@
 import pdfParse from "pdf-parse";
-import Bytez from "bytez.js";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { mapSkillToSOC } from "../data/soc-codes";
 import { ReasoningTracer } from "../utils/reasoning-tracer";
 
@@ -16,36 +17,63 @@ export interface ExtractedSkills {
         socCode: string | null;
         socTitle: string | null;
     }>;
+    experience: Array<{
+        role: string;
+        company: string;
+        years: number;
+    }>;
+    projects: Array<{
+        name: string;
+        description: string;
+    }>;
 }
 
-const ZERO_SHOT_NER_PROMPT = `You are an expert ATS (Applicant Tracking System) parser and Named Entity Recognition (NER) AI.
-Your exact purpose is to extract a highly accurate, production-ready profile of skills from the provided text (either a resume or a job description).
+const ZERO_SHOT_NER_PROMPT = `You are a world-class Named Entity Recognition (NER) system specialized in extracting skills from resumes and job descriptions.
 
-STRICT RULES:
-1. ONLY return a purely valid JSON object. Do NOT include any markdown formatting (no \`\`\`json), no introductory text, no conversational filler. Your entire response must be parsable by JSON.parse().
-2. The JSON must strictly adhere to this schema:
+TASK: Extract ALL technical and soft skills from the following text.
+
+RULES:
+1. Return ONLY valid JSON. No markdown, no explanation.
+2. Categorize each skill as "technical" or "soft".
+3. Normalize skill names to lowercase (e.g., "React.js" → "react", "Node.JS" → "node.js").
+4. Assign a confidence score between 0.0 and 1.0 for each skill based on how clearly it's mentioned.
+5. Do NOT invent skills that are not in the text.
+6. Include programming languages, frameworks, tools, databases, methodologies, and soft skills.
+
+OUTPUT FORMAT:
 {
   "technical": [
-    {"skill": "skill_name", "confidence": 0.0_to_1.0}
+    {"skill": "python", "confidence": 0.95},
+    {"skill": "react", "confidence": 0.85}
   ],
   "soft": [
-    {"skill": "skill_name", "confidence": 0.0_to_1.0}
+    {"skill": "leadership", "confidence": 0.8},
+    {"skill": "communication", "confidence": 0.7}
+  ],
+  "experience": [
+    {"role": "Senior Developer", "company": "Tech Corp", "years": 4}
+  ],
+  "projects": [
+    {"name": "E-commerce Platform", "description": "Built scalable backend"}
   ]
 }
-3. Normalize all technologies to their industry-standard lowercase names (e.g., "react.js" or "react" -> "react", "node" -> "node.js").
-4. 'confidence' must be vividly accurate based on how centrally the skill is featured in the text.
-5. Provide a comprehensive list. Do not summarize or skip important technologies.
 
 TEXT TO ANALYZE:
 `;
 
 export class DiagnoserService {
-    private bytezModel!: any;
+    private llm!: ChatOpenAI;
+    private isDummyMode: boolean;
 
     constructor() {
-        const apiKey = process.env.BYTEZ_API_KEY || "b441f287092403006b112c897c01f629";
-        const sdk = new Bytez(apiKey);
-        this.bytezModel = sdk.model("meta-llama/Meta-Llama-3.1-8B-Instruct");
+        this.isDummyMode = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === "";
+        if (!this.isDummyMode) {
+            this.llm = new ChatOpenAI({
+                modelName: "gpt-4o-mini",
+                temperature: 0,
+                maxTokens: 2000,
+            });
+        }
     }
 
     /**
@@ -56,33 +84,49 @@ export class DiagnoserService {
         return data.text;
     }
 
+    /**
+     * Use LangChain Zero-Shot NER to extract skills from text
+     */
     async extractSkills(
         text: string,
         tracer: ReasoningTracer
     ): Promise<ExtractedSkills> {
+        if (this.isDummyMode) {
+            tracer.addStep(
+                "DUMMY MODE ENABLED: Skipping zero-shot NER extraction",
+                "Returning mock extracted skills for candidates"
+            );
+            return {
+                technical: [
+                    { skill: "Python", confidence: 0.95, socCode: "15-1299.08", socTitle: "Computer Systems Architects" },
+                    { skill: "React", confidence: 0.85, socCode: null, socTitle: null },
+                    { skill: "SQL", confidence: 0.80, socCode: null, socTitle: null },
+                    { skill: "Git", confidence: 0.90, socCode: null, socTitle: null }
+                ],
+                soft: [
+                    { skill: "Communication", confidence: 0.80, socCode: null, socTitle: null }
+                ],
+                experience: [
+                    { role: "Software Engineer", company: "TechCorp India", years: 3 }
+                ],
+                projects: [
+                    { name: "Scalable Microservices Backend", description: "Migrated monolithic application to Spring Boot microservices, improving uptime by 40%." },
+                    { name: "Real-time Analytics Dashboard", description: "Built with React and WebSocket for live data monitoring." }
+                ]
+            };
+        }
+
         tracer.addStep(
-            "Initiating Meta-LLaMA parsing of document text",
-            "Sending text to LLM for production-grade extraction"
+            "Initiating Zero-Shot NER extraction from document text",
+            "Sending text to LLM for skill extraction"
         );
 
-        const { error, output } = await this.bytezModel.run([
-            {
-                role: "system",
-                content: "You are a precise NER system. Return only valid JSON without markdown wrapping."
-            },
-            {
-                role: "user",
-                content: ZERO_SHOT_NER_PROMPT + text
-            }
+        const response = await this.llm.invoke([
+            new SystemMessage(
+                "You are a precise NER system. Return only valid JSON."
+            ),
+            new HumanMessage(ZERO_SHOT_NER_PROMPT + text),
         ]);
-
-        if (error) {
-            throw new Error("Bytez LLaMA Integration Error: " + JSON.stringify(error));
-        }
-        
-        console.log("=== RAW BYTEZ OUTPUT ===");
-        console.dir(output, { depth: null });
-        console.log("========================");
 
         tracer.addStep(
             "LLM returned raw skill extraction result",
@@ -92,34 +136,18 @@ export class DiagnoserService {
         let parsed: {
             technical: Array<{ skill: string; confidence: number }>;
             soft: Array<{ skill: string; confidence: number }>;
+            experience?: Array<{ role: string; company: string; years: number }>;
+            projects?: Array<{ name: string; description: string }>;
         };
 
         try {
-            let content = "";
-            if (typeof output === "string") {
-                content = output;
-            } else if (output && typeof output === "object" && typeof output.content === "string") {
-                content = output.content;
-            } else if (Array.isArray(output) && output[0]?.generated_text) {
-                // Remove the input prompt from the generated text if returned together
-                const textOutput = output[0].generated_text;
-                const promptIndex = textOutput.lastIndexOf(ZERO_SHOT_NER_PROMPT + text);
-                if (promptIndex !== -1) {
-                    content = textOutput.substring(promptIndex + (ZERO_SHOT_NER_PROMPT + text).length).trim();
-                } else {
-                    content = textOutput;
-                }
-            } else {
-                content = JSON.stringify(output);
-            }
-
-            // Robust fallback if strict JSON parse fails natively
+            const content = response.content as string;
+            // Strip any markdown code fences if present
             const cleaned = content
-                .replace(/^[\s\S]*?\{/, "{") // Strip leading text before first {
-                .replace(/\}[^}]*$/, "}")   // Strip trailing text after last }
+                .replace(/```json\n?/g, "")
+                .replace(/```\n?/g, "")
                 .trim();
             parsed = JSON.parse(cleaned);
-            
             if (!parsed || typeof parsed !== 'object') {
                 parsed = { technical: [], soft: [] };
             }
@@ -128,13 +156,12 @@ export class DiagnoserService {
             // Filter out any entries with missing skill names
             parsed.technical = parsed.technical.filter(s => s && typeof s.skill === 'string' && s.skill.length > 0);
             parsed.soft = parsed.soft.filter(s => s && typeof s.skill === 'string' && s.skill.length > 0);
-            
         } catch (e) {
             tracer.addStep(
                 "Failed to parse LLM response as JSON",
                 "Returning empty skill set"
             );
-            return { technical: [], soft: [] };
+            return { technical: [], soft: [], experience: [], projects: [] };
         }
 
         tracer.addStep(
@@ -168,7 +195,12 @@ export class DiagnoserService {
             "Skill extraction complete"
         );
 
-        return { technical, soft };
+        return { 
+            technical, 
+            soft, 
+            experience: parsed.experience || [], 
+            projects: parsed.projects || [] 
+        };
     }
 
     /**
@@ -178,9 +210,24 @@ export class DiagnoserService {
         jdText: string,
         tracer: ReasoningTracer
     ): Promise<ExtractedSkills> {
+        if (this.isDummyMode) {
+            tracer.addStep("DUMMY MODE: Processing Job Description text", "Returning mock JD skills");
+            return {
+                technical: [
+                    { skill: "Python", confidence: 0.9, socCode: null, socTitle: null },
+                    { skill: "React", confidence: 0.9, socCode: null, socTitle: null },
+                    { skill: "LangGraph", confidence: 1.0, socCode: null, socTitle: null },
+                    { skill: "ChromaDB", confidence: 0.95, socCode: null, socTitle: null }
+                ],
+                soft: [],
+                experience: [],
+                projects: []
+            };
+        }
+
         tracer.addStep(
             "Processing Job Description text",
-            "Extracting optimal JD skills using Meta-LLaMA NER"
+            "Extracting JD skills using Zero-Shot NER"
         );
         return this.extractSkills(jdText, tracer);
     }

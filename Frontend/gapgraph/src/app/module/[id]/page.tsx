@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { motion } from "framer-motion";
-import { modules } from "@/lib/data";
+import { motion, AnimatePresence } from "framer-motion";
+import { modules as staticModules } from "@/lib/data";
 import { useApp } from "@/lib/context";
 import { useToast } from "@/components/Toast";
 
@@ -35,11 +35,34 @@ export default function ModuleDetailPage() {
   const router = useRouter();
   const params = useParams();
   const moduleId = Number(params.id);
-  const mod = modules.find((m) => m.id === moduleId);
-  const { completedModules, toggleModule } = useApp();
+  const { completedModules, toggleModule, analysisResult } = useApp();
   const { showToast } = useToast();
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+
+  const isDynamic = !!analysisResult;
+  let rawModules = analysisResult?.learningPath?.nodes || staticModules;
+  
+  const modulesDb = isDynamic ? rawModules.map((m: any, i: number) => ({
+    ...m,
+    id: i + 1,
+    hours: m.durationHours || 10,
+    priority: m.difficulty === "beginner" ? "low" : m.difficulty === "intermediate" ? "medium" : "critical",
+    category: m.skillsCovered[0] || "Foundations",
+    resources: m.resources || [],
+    quiz: { // Fake quiz for dynamic data
+      question: `Which of the following best describes the core utility of ${m.title}?`,
+      options: [
+        "It acts as a primary database for unstructured logs.",
+        "It orchestrates, scales, and manages containerized applications or workflows efficiently.",
+        "It is a UI library strictly used for building mobile interfaces quickly."
+      ],
+      correct: 1
+    }
+  })) : rawModules;
+
+  const mod = modulesDb.find((m: any) => m.id === moduleId);
 
   if (!mod) {
     return (
@@ -53,7 +76,7 @@ export default function ModuleDetailPage() {
   }
 
   const isDone = completedModules.has(mod.id);
-  const p = priorityStyles[mod.priority];
+  const p = priorityStyles[mod.priority as keyof typeof priorityStyles] || priorityStyles.medium;
 
   const handleQuizAnswer = (index: number) => {
     if (quizSubmitted) return;
@@ -76,6 +99,7 @@ export default function ModuleDetailPage() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
+      className="pb-32" // Padding for bottom bar
     >
       {/* Hero Section */}
       <header className="max-w-7xl mx-auto px-6 pt-16 pb-12 faint-grid">
@@ -95,7 +119,16 @@ export default function ModuleDetailPage() {
               <br />
               <span className="text-on-background">{mod.title.split(" ").slice(2).join(" ") || "Deep Dive"}</span>
             </h1>
-            <p className="text-lg text-on-surface-variant leading-relaxed">{mod.description}</p>
+            <p className="text-lg text-on-surface-variant leading-relaxed mb-6">{mod.description || "Master the core concepts and gain practical expertise through curated video resources and hands-on validation."}</p>
+            {isDynamic && (
+              <div className="flex flex-wrap gap-2">
+                {mod.skillsCovered?.map((s: string) => (
+                  <span key={s} className="px-3 py-1 bg-surface-container-high rounded-full text-xs font-mono text-on-surface-variant font-bold border border-outline-variant/50">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -121,114 +154,160 @@ export default function ModuleDetailPage() {
           </div>
           <div className="bg-surface-container-low p-6 rounded-xl shadow-sm border-l-4 border-tertiary">
             <div className="flex items-center gap-4">
-              <span className="material-symbols-outlined text-tertiary p-2 bg-surface-container rounded-lg">folder_open</span>
+              <span className="material-symbols-outlined text-tertiary p-2 bg-surface-container rounded-lg">smart_display</span>
               <div>
                 <p className="text-xs text-on-surface-variant font-medium">RESOURCES</p>
-                <p className="text-xl font-bold text-on-surface font-mono">{mod.resources.length} Items</p>
+                <p className="text-xl font-bold text-on-surface font-mono">{(mod.resources || []).length} Tuts</p>
               </div>
             </div>
           </div>
         </div>
       </header>
 
+      {/* Embedded Video Player */}
+      <AnimatePresence mode="wait">
+        {activeVideoId && (
+          <motion.section 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="max-w-5xl mx-auto px-6 mb-12"
+          >
+            <div className="bg-[#000] rounded-2xl overflow-hidden shadow-2xl relative pt-[56.25%] border border-surface-container-highest">
+              <div className="absolute top-0 right-0 z-10 p-4">
+                <button 
+                  onClick={() => setActiveVideoId(null)}
+                  className="w-10 h-10 bg-black/50 hover:bg-black/80 rounded-full flex items-center justify-center text-white backdrop-blur-md transition-colors border border-white/10"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <iframe 
+                src={`https://www.youtube.com/embed/${activeVideoId}?autoplay=1&rel=0`} 
+                title="YouTube video player" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowFullScreen
+                className="absolute inset-0 w-full h-full border-0"
+              />
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
       {/* Curated Materials */}
       <section className="max-w-7xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-bold text-primary-container mb-8 flex items-center gap-3">
           <span className="w-8 h-[2px] bg-primary-container" />
-          Curated Learning Materials
+          Curated Video Lectures
         </h2>
+        {(!mod.resources || mod.resources.length === 0) && (
+          <div className="p-8 text-center bg-surface-container-low rounded-xl text-on-surface-variant border border-dashed border-outline-variant/30">
+            No video resources found for this topic.
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {mod.resources.map((resource, i) => (
-            <motion.a
-              key={resource.title}
-              href={resource.url}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-surface-container rounded-xl p-6 flex flex-col justify-between hover:translate-y-[-4px] transition-all duration-300 group cursor-pointer"
-            >
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <span
-                    className={`material-symbols-outlined text-3xl ${typeColors[resource.type]}`}
-                    style={resource.type === "video" ? { fontVariationSettings: "'FILL' 1" } : {}}
-                  >
-                    {typeIcons[resource.type]}
-                  </span>
-                  <span className="text-xs text-on-surface-variant font-mono">{resource.duration}</span>
+          {mod.resources && mod.resources.map((resource: any, i: number) => {
+            const isYouTube = resource.videoId || (resource.url && resource.url.includes("youtube.com"));
+            const vId = resource.videoId || (isYouTube ? new URL(resource.url).searchParams.get("v") : null);
+
+            return (
+              <motion.div
+                key={resource.title + i}
+                onClick={() => isYouTube && vId ? setActiveVideoId(vId) : window.open(resource.url, "_blank")}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className={`bg-surface-container rounded-xl p-6 flex flex-col justify-between hover:translate-y-[-4px] transition-all duration-300 group cursor-pointer ${activeVideoId === vId ? 'ring-2 ring-primary-container bg-surface-container-high' : ''}`}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <span
+                      className={`material-symbols-outlined text-3xl ${typeColors[resource.type || "video"]}`}
+                      style={resource.type === "video" ? { fontVariationSettings: "'FILL' 1" } : {}}
+                    >
+                      {typeIcons[resource.type || "video"]}
+                    </span>
+                    <span className="text-xs text-on-surface-variant font-mono">{resource.duration || "Self-Paced"}</span>
+                  </div>
+                  <p className={`text-[10px] font-bold ${typeColors[resource.type || "video"]} tracking-widest uppercase mb-2`}>
+                    {typeLabels[resource.type || "video"]}
+                  </p>
+                  <h3 className="text-lg font-bold text-on-surface mb-2 leading-tight">{resource.title}</h3>
+                  <p className="text-sm text-on-surface-variant mb-4 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm">person</span>
+                    {resource.channel || resource.source || "Expert Instructor"}
+                  </p>
                 </div>
-                <p className={`text-[10px] font-bold ${typeColors[resource.type]} tracking-widest uppercase mb-2`}>
-                  {typeLabels[resource.type]}
-                </p>
-                <h3 className="text-lg font-bold text-on-surface mb-2">{resource.title}</h3>
-                <p className="text-sm text-on-surface-variant mb-4">{resource.source}</p>
-              </div>
-              <button className="text-primary-fixed-dim text-sm font-bold flex items-center gap-2 group/btn">
-                {resource.type === "video" ? "Watch" : "Open"} Resource
-                <span className="material-symbols-outlined text-sm group-hover/btn:translate-x-1 transition-transform">arrow_forward</span>
-              </button>
-            </motion.a>
-          ))}
+                <button className="text-primary-fixed-dim text-sm font-bold flex items-center gap-2 group/btn mt-4">
+                  {isYouTube ? "Watch Lecture Inline" : "Open Resource"}
+                  <span className="material-symbols-outlined text-sm group-hover/btn:translate-x-1 transition-transform">{isYouTube ? "play_circle" : "arrow_forward"}</span>
+                </button>
+              </motion.div>
+            )
+          })}
         </div>
       </section>
 
       {/* Knowledge Check Quiz */}
       <section className="max-w-4xl mx-auto px-6 py-12 mb-12">
-        <div className="bg-surface-container-low rounded-2xl p-8 relative overflow-hidden">
+        <div className="bg-surface-container-low rounded-2xl p-8 relative overflow-hidden shadow-xl border border-primary/10">
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary-container/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-on-surface">Knowledge Check</h2>
-            <div className="text-right">
-              <p className="text-xs text-on-surface-variant font-bold tracking-widest uppercase mb-1">
-                Quiz: {quizSubmitted ? (selectedAnswer === mod.quiz.correct ? "Correct!" : "Incorrect") : "Pending"}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+            <h2 className="text-2xl font-bold text-on-surface flex items-center gap-3">
+              <span className="material-symbols-outlined text-primary-container">quiz</span>
+              Validation Check
+            </h2>
+            <div className="text-left sm:text-right w-full sm:w-auto">
+              <p className="text-xs text-on-surface-variant font-bold tracking-widest uppercase mb-2 sm:mb-1">
+                Status: {quizSubmitted ? (selectedAnswer === mod.quiz.correct ? "Passed Validation" : "Needs Review") : "Pending Validation"}
               </p>
-              <div className="w-48 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+              <div className="w-full sm:w-48 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${quizSubmitted ? "bg-secondary" : "bg-primary-container/30"} shadow-[0_0_8px_#5de6ff] transition-all`}
+                  className={`h-full ${quizSubmitted ? (selectedAnswer === mod.quiz.correct ? "bg-success" : "bg-error") : "bg-primary-container/30"} shadow-[0_0_8px_currentColor] transition-all`}
                   style={{ width: quizSubmitted ? "100%" : "0%" }}
                 />
               </div>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="w-6 h-6 flex items-center justify-center bg-primary-container text-on-primary-container text-xs font-bold rounded">
+          <div className="space-y-4">
+            <div className="flex items-start gap-4 mb-6 bg-surface-container p-4 rounded-xl">
+              <span className="w-8 h-8 shrink-0 flex items-center justify-center bg-primary-container text-on-primary-container text-sm font-bold rounded-lg shadow-inner">
                 Q
               </span>
-              <p className="text-on-surface font-medium">{mod.quiz.question}</p>
+              <p className="text-on-surface font-medium leading-relaxed pt-1">{mod.quiz.question}</p>
             </div>
-            <div className="ml-9 space-y-3">
-              {mod.quiz.options.map((option, oi) => {
-                let style = "bg-surface-container hover:bg-surface-container-high cursor-pointer";
+            <div className="ml-0 sm:ml-12 space-y-3">
+              {mod.quiz.options.map((option: string, oi: number) => {
+                let style = "bg-surface-container hover:bg-surface-container-high hover:border-primary/30 border border-transparent cursor-pointer";
                 let icon = "";
                 if (quizSubmitted) {
                   if (oi === mod.quiz.correct) {
-                    style = "bg-secondary/10 border border-secondary/30";
+                    style = "bg-success/10 border border-success/30 shadow-[0_0_15px_rgba(52,211,153,0.1)]";
                     icon = "check_circle";
                   } else if (oi === selectedAnswer && oi !== mod.quiz.correct) {
-                    style = "bg-red-500/10 border border-red-500/30";
+                    style = "bg-error/10 border border-error/30";
                     icon = "cancel";
                   } else {
-                    style = "bg-surface-container opacity-50";
+                    style = "bg-surface-container opacity-40 border-transparent grayscale";
                   }
                 }
                 return (
                   <button
                     key={oi}
                     onClick={() => handleQuizAnswer(oi)}
-                    className={`w-full p-3 rounded-lg flex items-center justify-between text-left transition-all ${style}`}
+                    className={`w-full p-4 rounded-xl flex items-center justify-between text-left transition-all duration-300 ${style}`}
                     disabled={quizSubmitted}
                   >
                     <span className={`text-sm font-medium ${
-                      quizSubmitted && oi === mod.quiz.correct ? "text-secondary" :
-                      quizSubmitted && oi === selectedAnswer ? "text-red-400" : "text-on-surface"
+                      quizSubmitted && oi === mod.quiz.correct ? "text-success" :
+                      quizSubmitted && oi === selectedAnswer ? "text-error" : "text-on-surface"
                     }`}>
                       {option}
                     </span>
                     {quizSubmitted && icon && (
                       <span
-                        className={`material-symbols-outlined ${oi === mod.quiz.correct ? "text-secondary" : "text-red-400"}`}
+                        className={`material-symbols-outlined shrink-0 ml-3 ${oi === mod.quiz.correct ? "text-success" : "text-error"}`}
                         style={{ fontVariationSettings: "'FILL' 1" }}
                       >
                         {icon}
@@ -239,25 +318,45 @@ export default function ModuleDetailPage() {
               })}
             </div>
             {quizSubmitted && selectedAnswer !== mod.quiz.correct && (
-              <p className="ml-9 text-xs text-on-error-container bg-error-container/20 p-3 rounded-lg italic mt-2">
-                The correct answer is: &quot;{mod.quiz.options[mod.quiz.correct]}&quot;
-              </p>
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="ml-0 sm:ml-12 text-sm text-on-error-container bg-error-container/20 p-4 border border-error/20 rounded-xl mt-4 flex gap-3 items-start"
+              >
+                <span className="material-symbols-outlined text-error shrink-0 mt-0.5">info</span>
+                <div>
+                  <p className="font-bold mb-1 text-error">Incorrect Concept Map</p>
+                  <p className="opacity-90 leading-relaxed">The correct answer is: <span className="font-bold italic">"{mod.quiz.options[mod.quiz.correct]}"</span>. We recommend reviewing the Deep Dive lecture again to solidify this concept.</p>
+                </div>
+              </motion.div>
+            )}
+            {quizSubmitted && selectedAnswer === mod.quiz.correct && (
+               <motion.div 
+               initial={{ opacity: 0, height: 0 }}
+               animate={{ opacity: 1, height: "auto" }}
+               className="ml-0 sm:ml-12 text-sm text-success bg-success/10 p-4 border border-success/20 rounded-xl mt-4 flex gap-3 items-center"
+             >
+               <span className="material-symbols-outlined text-success shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+               <p className="font-bold">Excellent! You've validated your understanding of this concept.</p>
+             </motion.div>
             )}
           </div>
         </div>
       </section>
 
       {/* Navigation */}
-      <div className="max-w-7xl mx-auto px-6 flex justify-between items-center py-6 text-on-surface-variant">
+      <div className="max-w-7xl mx-auto px-6 flex justify-between items-center py-6 text-on-surface-variant pb-24 border-t border-surface-container">
         {mod.id > 1 ? (
           <button onClick={() => router.push(`/module/${mod.id - 1}`)} className="flex items-center gap-2 hover:text-primary transition-colors group">
             <span className="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
-            <span className="text-sm font-bold uppercase tracking-wider">Previous: {modules.find(m => m.id === mod.id - 1)?.title || "Module"}</span>
+            <span className="text-sm font-bold uppercase tracking-wider hidden sm:inline">Previous: {modulesDb.find((m: any) => m.id === mod.id - 1)?.title || "Module"}</span>
+            <span className="text-sm font-bold uppercase tracking-wider sm:hidden">Previous</span>
           </button>
         ) : <div />}
-        {mod.id < modules.length ? (
+        {mod.id < modulesDb.length ? (
           <button onClick={() => router.push(`/module/${mod.id + 1}`)} className="flex items-center gap-2 hover:text-primary transition-colors group">
-            <span className="text-sm font-bold uppercase tracking-wider">Next: {modules.find(m => m.id === mod.id + 1)?.title || "Module"}</span>
+            <span className="text-sm font-bold uppercase tracking-wider hidden sm:inline">Next: {modulesDb.find((m: any) => m.id === mod.id + 1)?.title || "Module"}</span>
+            <span className="text-sm font-bold uppercase tracking-wider sm:hidden">Next</span>
             <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
           </button>
         ) : <div />}
@@ -271,7 +370,7 @@ export default function ModuleDetailPage() {
             className="flex-1 px-6 py-3 bg-slate-800 text-slate-200 rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
           >
             <span className="material-symbols-outlined text-lg">undo</span>
-            Back to Roadmap
+            <span className="hidden sm:inline">Roadmap</span>
           </button>
           <button
             onClick={handleMarkComplete}
