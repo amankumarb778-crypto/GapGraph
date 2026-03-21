@@ -30,17 +30,34 @@ export default function RoadmapPage() {
   // Prefer dynamic modules from backend if analysis has run, else fallback to static demo
   const isDynamic = !!analysisResult;
   let rawModules = analysisResult?.learningPath?.nodes || staticModules;
+  const gapCount = analysisResult?.skillGaps?.length || 5;
   
-  // Assign fake IDs and phases if using dynamic data
+  // Dynamically assign phases by dividing the total array into 3 chunks
+  const totalRaw = rawModules.length;
+  const p1End = Math.ceil(totalRaw / 3);
+  const p2End = Math.ceil((totalRaw * 2) / 3);
+
   const modules = isDynamic ? rawModules.map((m: any, i: number) => ({
     ...m,
-    id: i + 1,
-    phase: i < 2 ? 1 : i < 4 ? 2 : 3,
+    id: m.courseId || String(i + 1),
+    phase: i < p1End ? 1 : i < p2End ? 2 : 3,
     hours: m.durationHours || 10,
+    title: m.title || "Untitled Course",
     priority: m.difficulty === "beginner" ? "low" : m.difficulty === "intermediate" ? "medium" : "critical",
-    category: m.skillsCovered[0] || "Foundations",
+    category: (m.skillsCovered && m.skillsCovered.length > 0) ? m.skillsCovered[0] : "Foundations",
     resources: m.resources || []
   })) : rawModules;
+
+  // Calculate dynamic hour splits per phase for the chart
+  const p1Hours = modules.filter((m: any) => m.phase === 1).reduce((sum: number, m: any) => sum + m.hours, 0) || 10;
+  const p2Hours = modules.filter((m: any) => m.phase === 2).reduce((sum: number, m: any) => sum + m.hours, 0) || 15;
+  const p3Hours = modules.filter((m: any) => m.phase === 3).reduce((sum: number, m: any) => sum + m.hours, 0) || 5;
+  const maxHours = Math.max(p1Hours, p2Hours, p3Hours, 1);
+
+  // Dynamic Base Readiness based on number of missing skills 
+  // (e.g. 0 gaps = 95%, 10 gaps = 45%)
+  const baseReadiness = Math.max(20, 95 - (gapCount * 5));
+  const readiness = Math.round(baseReadiness + (overallProgress * ((100 - baseReadiness) / 100)));
 
   const phases = [
     { num: 1, title: "Phase 1: Critical Foundations", subtitle: isDynamic ? "Fundamentals" : "Week 1-2" },
@@ -63,7 +80,7 @@ export default function RoadmapPage() {
           </h1>
           <p className="text-on-surface-variant text-sm max-w-md">
             {isDynamic 
-              ? `Personalized pathway based on ${analysisResult.skillGaps.length} identified skill gaps from your profile.`
+              ? `Personalized pathway based on ${gapCount} identified skill gaps from your profile.`
               : "Precision engineering path calibrated for Infrastructure Scalability and Cloud Native compliance."}
           </p>
         </div>
@@ -118,13 +135,13 @@ export default function RoadmapPage() {
               <circle
                 cx="56" cy="56" r="50" fill="transparent" stroke="#7c3aed" strokeWidth="8"
                 strokeDasharray="314"
-                strokeDashoffset={314 - (314 * (74 + overallProgress * 0.26)) / 100}
+                strokeDashoffset={314 - (314 * readiness) / 100}
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_8px_rgba(124,58,237,0.5)]"
               />
             </svg>
             <div className="flex flex-col items-center">
-              <span className="text-2xl font-black text-primary font-mono">{Math.round(74 + overallProgress * 0.26)}%</span>
+              <span className="text-2xl font-black text-primary font-mono">{readiness}%</span>
               <span className="text-[8px] uppercase tracking-tighter text-on-surface-variant">Readiness</span>
             </div>
           </div>
@@ -133,21 +150,25 @@ export default function RoadmapPage() {
 
         {/* Training Hours Chart */}
         <div className="md:col-span-5 bg-surface-container rounded-xl p-6 faint-grid">
-          <h3 className="text-on-surface-variant uppercase text-[10px] font-bold tracking-[0.2em] mb-6">Training Hours per Module</h3>
+          <h3 className="text-on-surface-variant uppercase text-[10px] font-bold tracking-[0.2em] mb-6">Training Hours per Phase</h3>
           <div className="flex items-end justify-between h-24 gap-3 px-2">
             {[
-              { label: "Foundations", height: "60%", color: "#F472B6" },
-              { label: "Practices", height: "85%", color: "#FBBF24" },
-              { label: "Specialization", height: "45%", color: "#A78BFA" },
-            ].map((bar) => (
-              <div key={bar.label} className="flex flex-col items-center flex-1 gap-2">
-                <div
-                  className="w-full rounded-t-lg"
-                  style={{ height: bar.height, background: bar.color, boxShadow: `0 0 15px ${bar.color}40` }}
-                />
-                <span className="text-[8px] text-on-surface-variant truncate w-full text-center">{bar.label}</span>
-              </div>
-            ))}
+              { label: "Foundations", hours: p1Hours, color: "#F472B6" },
+              { label: "Core Skills", hours: p2Hours, color: "#FBBF24" },
+              { label: "Advanced", hours: p3Hours, color: "#A78BFA" },
+            ].map((bar) => {
+              const heightPct = Math.max(10, Math.round((bar.hours / maxHours) * 100));
+              return (
+                <div key={bar.label} className="flex flex-col items-center flex-1 gap-1">
+                  <span className="text-[10px] font-mono text-on-surface-variant">{bar.hours}h</span>
+                  <div
+                    className="w-full rounded-t-lg transition-all"
+                    style={{ height: `${heightPct}%`, background: bar.color, boxShadow: `0 0 15px ${bar.color}40` }}
+                  />
+                  <span className="text-[8px] text-on-surface-variant truncate w-full text-center mt-1">{bar.label}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
